@@ -17,6 +17,7 @@ if (!process.env.MONGODB_URI) throw new Error('MONGODB_URI is required.');
 
 const allowedOrigins = CLIENT_URL.split(',').map((value) => value.trim()).filter(Boolean);
 app.disable('x-powered-by');
+app.set('trust proxy', 1);
 app.use(helmet());
 app.use(cors({ origin: (origin, callback) => {
   if (!origin || allowedOrigins.includes('*') || allowedOrigins.includes(origin)) return callback(null, true);
@@ -45,6 +46,7 @@ async function refreshProfessorStats(professorId) {
   return { rating, reviews, tag };
 }
 
+app.get('/', (req, res) => res.json({ service: 'Professor Review Hub API', status: 'running', health: '/api/health' }));
 app.get('/api/health', (req, res) => res.json({ ok: mongoose.connection.readyState === 1, service: 'Professor Review Hub API', database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected', timestamp: new Date().toISOString() }));
 
 app.post('/api/auth/register', authLimiter, asyncRoute(async (req, res) => {
