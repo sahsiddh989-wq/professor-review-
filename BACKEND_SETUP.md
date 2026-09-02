@@ -1,15 +1,35 @@
 # Professor Review Hub — Backend Setup
 
-The repository now contains a responsive static frontend plus an Express/MongoDB backend.
+The repository contains a static frontend plus an Express/MongoDB backend.
 
-## 1. Create MongoDB Atlas database
+## Backend features
 
-1. Create a free MongoDB Atlas cluster.
-2. Create a database user.
-3. Add your backend host to Network Access. For a first deployment you can allow `0.0.0.0/0`; for production, restrict access when possible.
-4. Copy the MongoDB connection string.
+- User registration and login
+- bcrypt password hashing
+- JWT authentication
+- Current-user profile endpoint
+- Professor search, filtering and pagination
+- Professor details with reviews
+- Authenticated professor creation
+- Authenticated review creation
+- One review per user per professor
+- Review edit and deletion by the author
+- Automatic professor rating/count recalculation
+- Helmet security headers
+- CORS protection
+- API and authentication rate limiting
+- MongoDB indexes for common queries
+- Health endpoint for deployment monitoring
 
-## 2. Run backend locally
+## 1. MongoDB Atlas
+
+1. Create a MongoDB Atlas cluster and database user.
+2. In Atlas Network Access, allow the IP range used by your backend host. For a temporary test deployment, `0.0.0.0/0` can be used; restrict it for production when possible.
+3. Copy the MongoDB connection string.
+
+**Never commit the real connection string to GitHub.** Put it only in the backend host's environment variables or a local `backend/.env` file.
+
+## 2. Local backend
 
 From the repository root:
 
@@ -18,7 +38,7 @@ cd backend
 npm install
 ```
 
-Create `backend/.env` from `.env.example` and set:
+Create `backend/.env`:
 
 ```env
 PORT=5000
@@ -27,13 +47,13 @@ JWT_SECRET=use-a-long-random-secret
 CLIENT_URL=http://localhost:5500
 ```
 
-Start the API:
+Start:
 
 ```bash
 npm start
 ```
 
-Check:
+Health check:
 
 ```text
 http://localhost:5000/api/health
@@ -41,83 +61,89 @@ http://localhost:5000/api/health
 
 ## 3. Seed professors
 
-With the backend running configuration available:
+After setting `MONGODB_URI`:
 
 ```bash
-node seed.js
+npm run seed
 ```
 
-This creates the six initial professors used by the current Professor Review Hub design.
+This seeds the six sample professors used by the current frontend.
 
-## 4. Connect the frontend locally
+## 4. Frontend connection
 
-Edit `api-config.js`:
+After deploying the backend, set the API URL in the root `api-config.js`:
 
 ```js
-window.PROFESSOR_REVIEW_API = 'http://localhost:5000/api';
+window.PROFESSOR_REVIEW_API = 'https://YOUR-BACKEND-DOMAIN/api';
 ```
 
-Then open the project through a local static server (for example VS Code Live Server), not by double-clicking the HTML file.
+Do not put MongoDB credentials or JWT secrets in this file.
 
-## 5. Deploy the backend
+## 5. Deploy backend on Render
 
-Recommended simple deployment: Render Web Service.
+A `render.yaml` file is included in the repository.
+
+Recommended Render Web Service settings:
 
 - Repository: `sahsiddh989-wq/professor-review-`
 - Root directory: `backend`
 - Build command: `npm install`
 - Start command: `npm start`
+- Health check: `/api/health`
 
-Add these environment variables in Render:
-
-```text
-MONGODB_URI
-JWT_SECRET
-CLIENT_URL
-```
-
-After deployment, copy the backend URL, for example:
+Set these Render environment variables:
 
 ```text
-https://your-service.onrender.com
+MONGODB_URI=<your MongoDB Atlas connection string>
+JWT_SECRET=<long random secret>
+CLIENT_URL=https://sahsiddh989-wq.github.io
 ```
 
-The API URL is:
+Important: `https://github.com/sahsiddh989-wq/professor-review-` is the **repository URL**, not the browser origin used by GitHub Pages. CORS must use the deployed Pages origin, normally `https://sahsiddh989-wq.github.io`.
+
+After Render gives you a backend URL, the API will be:
 
 ```text
-https://your-service.onrender.com/api
+https://YOUR-SERVICE.onrender.com/api
 ```
 
-## 6. Connect GitHub Pages frontend
+## 6. GitHub Pages frontend
 
-Update `api-config.js` with the deployed API URL:
+Update `api-config.js` with the real backend URL, commit it, and push to `main`. GitHub Pages will then call the live API instead of the demo fallback.
 
-```js
-window.PROFESSOR_REVIEW_API = 'https://your-service.onrender.com/api';
-```
+## 7. API routes
 
-Commit and push the change. GitHub Pages will then use the live backend.
+### Public
 
-## 7. What is implemented
+- `GET /api/health`
+- `GET /api/professors`
+- `GET /api/professors/stats/summary`
+- `GET /api/professors/:id`
+- `GET /api/reviews/professor/:id`
+- `POST /api/auth/register`
+- `POST /api/auth/login`
 
-- User registration
-- Password hashing with bcrypt
-- JWT login authentication
-- Current-user endpoint
-- Professor listing/search/filtering
-- Professor details and reviews
-- Authenticated professor creation
-- Authenticated review creation
-- One review per user per professor
-- Review deletion by its author
-- Automatic professor rating/count recalculation
-- Responsive mobile navigation
-- Responsive professor cards and forms
-- Frontend demo fallback while the backend URL is not configured
+### Authenticated
 
-## Important production notes
+Send `Authorization: Bearer <JWT>`.
 
-- Never commit `backend/.env`.
-- Keep `JWT_SECRET` and `MONGODB_URI` only in deployment environment variables.
-- Replace the demo statistics on the landing page with database-derived statistics before calling the numbers production data.
-- Add email verification, moderation/reporting, rate limiting, pagination and stronger CORS restrictions before a public production launch.
+- `GET /api/auth/me`
+- `PATCH /api/auth/me`
+- `POST /api/professors`
+- `GET /api/reviews/mine`
+- `POST /api/reviews`
+- `PATCH /api/reviews/:id`
+- `DELETE /api/reviews/:id`
+
+## Production security checklist
+
+Before public production use:
+
+- Replace the temporary database password.
+- Rotate the MongoDB Atlas user password.
+- Generate a strong random `JWT_SECRET` and never commit it.
+- Restrict MongoDB Network Access to the backend where practical.
+- Keep `CLIENT_URL` limited to the exact frontend origin(s).
+- Add email verification, moderation/reporting and account recovery.
+- Consider moving authentication from localStorage to secure HttpOnly cookies if the architecture is updated for it.
+- Back up the MongoDB database before major schema/data changes.
