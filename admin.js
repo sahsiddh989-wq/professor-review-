@@ -1,1 +1,337 @@
-const API_BASE=(window.PROFESSOR_REVIEW_API||'').replace(/\/$/,'');const KEY='professor_review_admin_token';const USER_KEY='professor_review_admin_user';let users=[],professors=[],reviews=[];const $=id=>document.getElementById(id);function token(){return localStorage.getItem(KEY)}function esc(v=''){return String(v).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','"':'&quot;'}[c]||c))}async function api(path,opt={}){const headers={'Content-Type':'application/json',...(opt.headers||{})};if(token())headers.Authorization=`Bearer ${token()}`;const r=await fetch(`${API_BASE}${path}`,{...opt,headers});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.message||'Request failed');return d}function showError(msg){$('loginError').textContent=msg}function msg(text){$('message').textContent=text;$('message').classList.add('show');setTimeout(()=>$('message').classList.remove('show'),2500)}function showApp(){$('login').classList.add('hidden');loadAll()}function logout(){localStorage.removeItem(KEY);localStorage.removeItem(USER_KEY);location.reload()}async function login(e){e.preventDefault();showError('');try{const d=await api('/auth/admin-login',{method:'POST',body:JSON.stringify({email:$('loginEmail').value.trim(),password:$('loginPassword').value})});localStorage.setItem(KEY,d.token);if(d.user)localStorage.setItem(USER_KEY,JSON.stringify(d.user));$('adminName').textContent=d.user?.name||d.user?.email||'Admin';showApp()}catch(e){showError(e.message)}}async function loadAll(){try{const [s,u,p,r,m]=await Promise.all([api('/admin/stats'),api('/admin/users'),api('/admin/professors'),api('/admin/reviews'),api('/admin/me')]);if(m.user)localStorage.setItem(USER_KEY,JSON.stringify(m.user));$('statUsers').textContent=s.users;$('statProfessors').textContent=s.professors;$('statReviews').textContent=s.reviews;$('statRating').textContent=s.averageRating||'0.0';$('adminName').textContent=m.user?.name||m.user?.email||'Admin';users=u.users;professors=p.professors;reviews=r.reviews;renderUsers();renderProfessors();renderReviews()}catch(e){if(/Authentication|Invalid|Admin|expired/i.test(e.message))logout();else msg(e.message)}}function renderUsers(){const q=$('userSearch').value.toLowerCase();$('usersBody').innerHTML=users.filter(u=>`${u.name} ${u.email} ${u.university}`.toLowerCase().includes(q)).map(u=>`<tr><td><strong>${esc(u.name)}</strong></td><td>${esc(u.email)}</td><td>${esc(u.university||'—')}</td><td><span class="badge">${esc(u.role)}</span></td><td>${new Date(u.createdAt).toLocaleDateString()}</td><td>${u.role==='admin'?'':`<button class="danger" data-delete-user="${u._id}">Delete</button>`} ${String(u._id)!==String(getCurrentId())?`<button class="role" data-role-id="${u._id}" data-role="${u.role==='admin'?'student':'admin'}">Make ${u.role==='admin'?'Student':'Admin'}</button>`:''}</td></tr>`).join('')||'<tr><td colspan="6">No users found.</td></tr>'}function getCurrentId(){try{return JSON.parse(localStorage.getItem(USER_KEY)||'null')?.id||''}catch{return''}}function renderProfessors(){const q=$('profSearch').value.toLowerCase();$('professorsBody').innerHTML=professors.filter(p=>`${p.name} ${p.course} ${p.dept} ${p.university}`.toLowerCase().includes(q)).map(p=>`<tr><td><strong>${esc(p.name)}</strong></td><td>${esc(p.course)}</td><td>${esc(p.dept||'—')}</td><td>${esc(p.university||'—')}</td><td>★ ${Number(p.rating||0).toFixed(1)}</td><td>${p.reviews||0}</td><td><button class="danger" data-delete-prof="${p._id}">Delete</button></td></tr>`).join('')||'<tr><td colspan="7">No professors found.</td></tr>'}function renderReviews(){const q=$('reviewSearch').value.toLowerCase();$('reviewsBody').innerHTML=reviews.filter(r=>`${r.comment} ${r.user?.name} ${r.professor?.name}`.toLowerCase().includes(q)).map(r=>`<tr><td><strong>${esc(r.professor?.name||'Unknown')}</strong><small>${esc(r.professor?.course||'')}</small></td><td>${esc(r.user?.name||'Unknown')}<small>${esc(r.user?.email||'')}</small></td><td>★ ${r.rating}</td><td class="review-text">${esc(r.comment)}</td><td>${new Date(r.createdAt).toLocaleDateString()}</td><td><button class="danger" data-delete-review="${r._id}">Remove</button></td></tr>`).join('')||'<tr><td colspan="6">No reviews found.</td></tr>'}async function removeReview(id){if(!confirm('Remove this review permanently?'))return;try{await api(`/admin/reviews/${id}`,{method:'DELETE'});msg('Review removed.');await loadAll()}catch(e){msg(e.message)}}async function removeProfessor(id){if(!confirm('Delete this professor and all associated reviews?'))return;try{await api(`/admin/professors/${id}`,{method:'DELETE'});msg('Professor deleted.');await loadAll()}catch(e){msg(e.message)}}async function removeUser(id){if(!confirm('Delete this user and their reviews?'))return;try{await api(`/admin/users/${id}`,{method:'DELETE'});msg('User deleted.');await loadAll()}catch(e){msg(e.message)}}async function changeRole(id,role){try{await api(`/admin/users/${id}/role`,{method:'PATCH',body:JSON.stringify({role})});msg('User role updated.');await loadAll()}catch(e){msg(e.message)}}document.addEventListener('DOMContentLoaded',()=>{if(!API_BASE){showError('Backend URL is missing. Check api-config.js.');return}if(token())showApp();$('loginForm').addEventListener('submit',login);$('logout').addEventListener('click',logout);document.querySelectorAll('.nav').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.nav').forEach(x=>x.classList.remove('active'));b.classList.add('active');document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));$(b.dataset.section).classList.add('active');$('pageTitle').textContent=b.querySelector('span').textContent}));$('userSearch').addEventListener('input',renderUsers);$('profSearch').addEventListener('input',renderProfessors);$('reviewSearch').addEventListener('input',renderReviews);$('refreshUsers').addEventListener('click',loadAll);$('refreshProfessors').addEventListener('click',loadAll);$('refreshReviews').addEventListener('click',loadAll);document.addEventListener('click',e=>{const r=e.target.closest('[data-delete-review]');if(r)return removeReview(r.dataset.deleteReview);const p=e.target.closest('[data-delete-prof]');if(p)return removeProfessor(p.dataset.deleteProf);const u=e.target.closest('[data-delete-user]');if(u)return removeUser(u.dataset.deleteUser);const role=e.target.closest('[data-role-id]');if(role)return changeRole(role.dataset.roleId,role.dataset.role)});$('profForm').addEventListener('submit',async e=>{e.preventDefault();try{await api('/admin/professors',{method:'POST',body:JSON.stringify({name:$('profName').value.trim(),course:$('profCourse').value.trim(),dept:$('profDept').value.trim(),university:$('profUniversity').value.trim()})});e.target.reset();msg('Professor added.');await loadAll()}catch(e){msg(e.message)}})});
+const API_BASE = (window.PROFESSOR_REVIEW_API || '').replace(/\/$/, '');
+const TOKEN_KEY = 'professor_review_admin_token';
+const USER_KEY = 'professor_review_admin_user';
+
+let users = [];
+let professors = [];
+let reviews = [];
+
+const $ = (id) => document.getElementById(id);
+const getToken = () => localStorage.getItem(TOKEN_KEY);
+
+function escapeHtml(value) {
+  return String(value == null ? '' : value).replace(/[&<>\'"]/g, (char) => {
+    const map = {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      "'": '&#039;',
+      '"': '&quot;'
+    };
+    return map[char] || char;
+  });
+}
+
+function showLoginError(message) {
+  const el = $('loginError');
+  if (el) el.textContent = message || '';
+}
+
+function showMessage(message) {
+  const el = $('message');
+  if (!el) return;
+  el.textContent = message;
+  el.classList.add('show');
+  window.setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+async function api(path, options) {
+  const opts = options || {};
+  const headers = Object.assign({ 'Content-Type': 'application/json' }, opts.headers || {});
+  const currentToken = getToken();
+
+  if (currentToken) headers.Authorization = `Bearer ${currentToken}`;
+
+  const response = await fetch(`${API_BASE}${path}`, Object.assign({}, opts, { headers }));
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(data.message || `Request failed (${response.status})`);
+  }
+
+  return data;
+}
+
+function saveAdminUser(user) {
+  if (user) localStorage.setItem(USER_KEY, JSON.stringify(user));
+}
+
+function currentAdminId() {
+  try {
+    const user = JSON.parse(localStorage.getItem(USER_KEY) || 'null');
+    return user && (user.id || user._id) ? String(user.id || user._id) : '';
+  } catch (error) {
+    return '';
+  }
+}
+
+function showDashboard() {
+  const login = $('login');
+  if (login) login.classList.add('hidden');
+  loadAll();
+}
+
+function logout() {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USER_KEY);
+  window.location.reload();
+}
+
+async function login(event) {
+  event.preventDefault();
+  showLoginError('');
+
+  try {
+    const email = $('loginEmail').value.trim();
+    const password = $('loginPassword').value;
+
+    const data = await api('/auth/admin-login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password })
+    });
+
+    if (!data.token) throw new Error('Admin login succeeded but no token was returned.');
+
+    localStorage.setItem(TOKEN_KEY, data.token);
+    saveAdminUser(data.user);
+
+    const adminName = $('adminName');
+    if (adminName) adminName.textContent = data.user && (data.user.name || data.user.email) || 'Administrator';
+
+    showDashboard();
+  } catch (error) {
+    showLoginError(error.message);
+  }
+}
+
+async function loadAll() {
+  try {
+    const results = await Promise.all([
+      api('/admin/stats'),
+      api('/admin/users'),
+      api('/admin/professors'),
+      api('/admin/reviews'),
+      api('/admin/me')
+    ]);
+
+    const stats = results[0];
+    const userData = results[1];
+    const professorData = results[2];
+    const reviewData = results[3];
+    const me = results[4];
+
+    saveAdminUser(me.user);
+
+    if ($('statUsers')) $('statUsers').textContent = stats.users || 0;
+    if ($('statProfessors')) $('statProfessors').textContent = stats.professors || 0;
+    if ($('statReviews')) $('statReviews').textContent = stats.reviews || 0;
+    if ($('statRating')) $('statRating').textContent = stats.averageRating || '0.0';
+    if ($('adminName')) $('adminName').textContent = me.user && (me.user.name || me.user.email) || 'Administrator';
+
+    users = userData.users || [];
+    professors = professorData.professors || [];
+    reviews = reviewData.reviews || [];
+
+    renderUsers();
+    renderProfessors();
+    renderReviews();
+  } catch (error) {
+    if (/authentication|unauthorized|invalid token|expired|admin/i.test(error.message)) {
+      logout();
+    } else {
+      showMessage(error.message);
+    }
+  }
+}
+
+function renderUsers() {
+  const body = $('usersBody');
+  if (!body) return;
+
+  const query = (($('userSearch') && $('userSearch').value) || '').toLowerCase();
+  const adminId = currentAdminId();
+
+  body.innerHTML = users
+    .filter((user) => `${user.name || ''} ${user.email || ''} ${user.university || ''}`.toLowerCase().includes(query))
+    .map((user) => {
+      const id = String(user._id || user.id || '');
+      const isAdmin = user.role === 'admin';
+      const isCurrent = id === adminId;
+      return `<tr>
+        <td><strong>${escapeHtml(user.name)}</strong></td>
+        <td>${escapeHtml(user.email)}</td>
+        <td>${escapeHtml(user.university || '—')}</td>
+        <td><span class="badge">${escapeHtml(user.role || 'student')}</span></td>
+        <td>${user.createdAt ? new Date(user.createdAt).toLocaleDateString() : '—'}</td>
+        <td>
+          ${!isAdmin ? `<button class="danger" data-delete-user="${id}">Delete</button>` : ''}
+          ${!isCurrent ? `<button class="role" data-role-id="${id}" data-role="${isAdmin ? 'student' : 'admin'}">Make ${isAdmin ? 'Student' : 'Admin'}</button>` : ''}
+        </td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="6">No users found.</td></tr>';
+}
+
+function renderProfessors() {
+  const body = $('professorsBody');
+  if (!body) return;
+
+  const query = (($('profSearch') && $('profSearch').value) || '').toLowerCase();
+
+  body.innerHTML = professors
+    .filter((professor) => `${professor.name || ''} ${professor.course || ''} ${professor.dept || ''} ${professor.university || ''}`.toLowerCase().includes(query))
+    .map((professor) => {
+      const id = String(professor._id || professor.id || '');
+      return `<tr>
+        <td><strong>${escapeHtml(professor.name)}</strong></td>
+        <td>${escapeHtml(professor.course)}</td>
+        <td>${escapeHtml(professor.dept || '—')}</td>
+        <td>${escapeHtml(professor.university || '—')}</td>
+        <td>★ ${Number(professor.rating || 0).toFixed(1)}</td>
+        <td>${professor.reviews || 0}</td>
+        <td><button class="danger" data-delete-prof="${id}">Delete</button></td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="7">No professors found.</td></tr>';
+}
+
+function renderReviews() {
+  const body = $('reviewsBody');
+  if (!body) return;
+
+  const query = (($('reviewSearch') && $('reviewSearch').value) || '').toLowerCase();
+
+  body.innerHTML = reviews
+    .filter((review) => `${review.comment || ''} ${review.user && review.user.name || ''} ${review.professor && review.professor.name || ''}`.toLowerCase().includes(query))
+    .map((review) => {
+      const id = String(review._id || review.id || '');
+      const professor = review.professor || {};
+      const user = review.user || {};
+      return `<tr>
+        <td><strong>${escapeHtml(professor.name || 'Unknown')}</strong><small>${escapeHtml(professor.course || '')}</small></td>
+        <td>${escapeHtml(user.name || 'Unknown')}<small>${escapeHtml(user.email || '')}</small></td>
+        <td>★ ${escapeHtml(review.rating)}</td>
+        <td class="review-text">${escapeHtml(review.comment)}</td>
+        <td>${review.createdAt ? new Date(review.createdAt).toLocaleDateString() : '—'}</td>
+        <td><button class="danger" data-delete-review="${id}">Remove</button></td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="6">No reviews found.</td></tr>';
+}
+
+async function removeReview(id) {
+  if (!window.confirm('Remove this review permanently?')) return;
+  try {
+    await api(`/admin/reviews/${id}`, { method: 'DELETE' });
+    showMessage('Review removed.');
+    await loadAll();
+  } catch (error) {
+    showMessage(error.message);
+  }
+}
+
+async function removeProfessor(id) {
+  if (!window.confirm('Delete this professor and associated reviews?')) return;
+  try {
+    await api(`/admin/professors/${id}`, { method: 'DELETE' });
+    showMessage('Professor deleted.');
+    await loadAll();
+  } catch (error) {
+    showMessage(error.message);
+  }
+}
+
+async function removeUser(id) {
+  if (!window.confirm('Delete this user and their reviews?')) return;
+  try {
+    await api(`/admin/users/${id}`, { method: 'DELETE' });
+    showMessage('User deleted.');
+    await loadAll();
+  } catch (error) {
+    showMessage(error.message);
+  }
+}
+
+async function changeRole(id, role) {
+  try {
+    await api(`/admin/users/${id}/role`, {
+      method: 'PATCH',
+      body: JSON.stringify({ role })
+    });
+    showMessage('User role updated.');
+    await loadAll();
+  } catch (error) {
+    showMessage(error.message);
+  }
+}
+
+function switchSection(button) {
+  document.querySelectorAll('.nav').forEach((item) => item.classList.remove('active'));
+  button.classList.add('active');
+
+  document.querySelectorAll('.panel').forEach((panel) => panel.classList.remove('active'));
+  const target = $(button.dataset.section);
+  if (target) target.classList.add('active');
+
+  const title = button.querySelector('span');
+  if ($('pageTitle') && title) $('pageTitle').textContent = title.textContent;
+}
+
+async function addProfessor(event) {
+  event.preventDefault();
+  try {
+    await api('/admin/professors', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: $('profName').value.trim(),
+        course: $('profCourse').value.trim(),
+        dept: $('profDept').value.trim(),
+        university: $('profUniversity').value.trim()
+      })
+    });
+
+    event.target.reset();
+    showMessage('Professor added.');
+    await loadAll();
+  } catch (error) {
+    showMessage(error.message);
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (!API_BASE) {
+    showLoginError('Backend URL is missing. Check api-config.js.');
+    return;
+  }
+
+  const loginForm = $('loginForm');
+  if (loginForm) loginForm.addEventListener('submit', login);
+
+  const logoutButton = $('logout');
+  if (logoutButton) logoutButton.addEventListener('click', logout);
+
+  document.querySelectorAll('.nav').forEach((button) => {
+    button.addEventListener('click', () => switchSection(button));
+  });
+
+  if ($('userSearch')) $('userSearch').addEventListener('input', renderUsers);
+  if ($('profSearch')) $('profSearch').addEventListener('input', renderProfessors);
+  if ($('reviewSearch')) $('reviewSearch').addEventListener('input', renderReviews);
+  if ($('refreshUsers')) $('refreshUsers').addEventListener('click', loadAll);
+  if ($('refreshProfessors')) $('refreshProfessors').addEventListener('click', loadAll);
+  if ($('refreshReviews')) $('refreshReviews').addEventListener('click', loadAll);
+  if ($('profForm')) $('profForm').addEventListener('submit', addProfessor);
+
+  document.addEventListener('click', (event) => {
+    const reviewButton = event.target.closest('[data-delete-review]');
+    if (reviewButton) return removeReview(reviewButton.dataset.deleteReview);
+
+    const professorButton = event.target.closest('[data-delete-prof]');
+    if (professorButton) return removeProfessor(professorButton.dataset.deleteProf);
+
+    const userButton = event.target.closest('[data-delete-user]');
+    if (userButton) return removeUser(userButton.dataset.deleteUser);
+
+    const roleButton = event.target.closest('[data-role-id]');
+    if (roleButton) return changeRole(roleButton.dataset.roleId, roleButton.dataset.role);
+  });
+
+  if (getToken()) showDashboard();
+});
