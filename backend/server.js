@@ -28,13 +28,23 @@ app.use(express.urlencoded({ extended: false, limit: '100kb' }));
 app.use('/api', rateLimit({ windowMs: 15 * 60 * 1000, limit: 300, standardHeaders: 'draft-8', legacyHeaders: false }));
 const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: 'draft-8', legacyHeaders: false });
 const asyncRoute = (handler) => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
-const publicUser = (user) => ({ id: user._id, name: user.name, email: user.email, university: user.university });
+const publicUser = (user) => ({ id: user._id, name: user.name, email: user.email, university: user.university, role: user.role });
 function signToken(user) { return jwt.sign({ id: user._id.toString(), email: user.email }, JWT_SECRET, { expiresIn: '7d' }); }
 function auth(req, res, next) {
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
   if (!token) return res.status(401).json({ message: 'Authentication required.' });
   try { req.user = jwt.verify(token, JWT_SECRET); next(); } catch { return res.status(401).json({ message: 'Invalid or expired token.' }); }
+}
+async function adminAuth(req, res, next) {
+  auth(req, res, async () => {
+    try {
+      const user = await User.findById(req.user.id);
+      if (!user || user.role !== 'admin') return res.status(403).json({ message: 'Admin access required.' });
+      req.admin = user;
+      next();
+    } catch (error) { next(error); }
+  });
 }
 function validRating(value) { const n = Number(value); return Number.isFinite(n) && n >= 1 && n <= 5; }
 async function refreshProfessorStats(professorId) {
@@ -58,7 +68,7 @@ app.post('/api/auth/register', authLimiter, asyncRoute(async (req, res) => {
   if (!/^\S+@\S+\.\S+$/.test(normalizedEmail)) return res.status(400).json({ message: 'Enter a valid email address.' });
   if (await User.exists({ email: normalizedEmail })) return res.status(409).json({ message: 'An account with this email already exists.' });
   const passwordHash = await bcrypt.hash(password, 12);
-  const user = await User.create({ name: String(name).trim(), email: normalizedEmail, university: String(university).trim(), passwordHash });
+  const user = await User.create({ name: String(name).trim(), email: normalizedEmail, university: String(university).trim(), passwordHash, role: 'student' });
   res.status(201).json({ token: signToken(user), user: publicUser(user) });
 }));
 app.post('/api/auth/login', authLimiter, asyncRoute(async (req, res) => {
@@ -67,6 +77,14 @@ app.post('/api/auth/login', authLimiter, asyncRoute(async (req, res) => {
   if (!email || !password) return res.status(400).json({ message: 'Email and password are required.' });
   const user = await User.findOne({ email });
   if (!user || !(await bcrypt.compare(password, user.passwordHash))) return res.status(401).json({ message: 'Invalid email or password.' });
+  res.json({ token: signToken(user), user: publicUser(user) });
+}));
+app.post('/api/auth/admin-login', authLimiter, asyncRoute(async (req, res) => {
+  const email = String(req.body.email || '').trim().toLowerCase();
+  const password = String(req.body.password || '');
+  if (!email || !password) return res.status(400).json({ message: 'Admin email and password are required.' });
+  const user = await User.findOne({ email });
+  if (!user || user.role !== 'admin' || !(await bcrypt.compare(password, user.passwordHash))) return res.status(401).json({ message: 'Invalid admin credentials.' });
   res.json({ token: signToken(user), user: publicUser(user) });
 }));
 app.get('/api/auth/me', auth, asyncRoute(async (req, res) => {
@@ -157,6 +175,66 @@ app.delete('/api/reviews/:id', auth, asyncRoute(async (req, res) => {
   res.json({ message: 'Review deleted.', professorStats: await refreshProfessorStats(review.professor) });
 }));
 
+// Admin API: every route below is protected by a database-backed admin role.
+app.get('/api/admin/me', adminAuth, (req, res) => res.json({ user: publicUser(req.admin) }));
+app.get('/api/admin/stats', adminAuth, asyncRoute(async (req, res) => {
+  const [users, admins, professors, reviews, avg] = await Promise.all([
+    User.countDocuments(), User.countDocuments({ role: 'admin' }), Professor.countDocuments(), Review.countDocuments(),
+    Review.aggregate([{ $group: { _id: null, avg: { $avg: '$rating' } } }])
+  ]);
+  res.json({ users, admins, professors, reviews, averageRating: Number((avg[0]?.avg || 0).toFixed(1)) });
+}));
+app.get('/api/admin/users', adminAuth, asyncRoute(async (req, res) => {
+  const q = String(req.query.q || '').trim();
+  const filter = q ? { $or: [{ name: { $regex: q, $options: 'i' } }, { email: { $regex: q, $options: 'i' } }, { university: { $regex: q, $options: 'i' } }] } : {};
+  const users = await User.find(filter).select('-passwordHash').sort({ createdAt: -1 }).limit(200).lean();
+  res.json({ users });
+}));
+app.patch('/api/admin/users/:id/role', adminAuth, asyncRoute(async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ message: 'Invalid user ID.' });
+  const role = req.body.role === 'admin' ? 'admin' : 'student';
+  if (String(req.params.id) === String(req.admin._id) && role !== 'admin') return res.status(400).json({ message: 'You cannot remove your own admin role.' });
+  const user = await User.findByIdAndUpdate(req.params.id, { role }, { new: true }).select('-passwordHash');
+  if (!user) return res.status(404).json({ message: 'User not found.' });
+  res.json({ user });
+}));
+app.delete('/api/admin/users/:id', adminAuth, asyncRoute(async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ message: 'Invalid user ID.' });
+  if (String(req.params.id) === String(req.admin._id)) return res.status(400).json({ message: 'You cannot delete your own admin account.' });
+  const user = await User.findByIdAndDelete(req.params.id);
+  if (!user) return res.status(404).json({ message: 'User not found.' });
+  await Review.deleteMany({ user: user._id });
+  res.json({ message: 'User and their reviews deleted.' });
+}));
+app.get('/api/admin/reviews', adminAuth, asyncRoute(async (req, res) => {
+  const reviews = await Review.find().populate('user', 'name email university').populate('professor', 'name course university').sort({ createdAt: -1 }).limit(300).lean();
+  res.json({ reviews });
+}));
+app.delete('/api/admin/reviews/:id', adminAuth, asyncRoute(async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ message: 'Invalid review ID.' });
+  const review = await Review.findByIdAndDelete(req.params.id);
+  if (!review) return res.status(404).json({ message: 'Review not found.' });
+  await refreshProfessorStats(review.professor);
+  res.json({ message: 'Review removed by admin.' });
+}));
+app.get('/api/admin/professors', adminAuth, asyncRoute(async (req, res) => {
+  const professors = await Professor.find().sort({ createdAt: -1 }).limit(300).lean();
+  res.json({ professors });
+}));
+app.post('/api/admin/professors', adminAuth, asyncRoute(async (req, res) => {
+  const { name, course, dept = '', university = '' } = req.body;
+  if (!name || !course) return res.status(400).json({ message: 'Professor name and course are required.' });
+  const professor = await Professor.create({ name: String(name).trim(), course: String(course).trim(), dept: String(dept).trim(), university: String(university).trim() });
+  res.status(201).json({ professor });
+}));
+app.delete('/api/admin/professors/:id', adminAuth, asyncRoute(async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ message: 'Invalid professor ID.' });
+  const professor = await Professor.findByIdAndDelete(req.params.id);
+  if (!professor) return res.status(404).json({ message: 'Professor not found.' });
+  await Review.deleteMany({ professor: professor._id });
+  res.json({ message: 'Professor and associated reviews deleted.' });
+}));
+
 app.use((req, res) => res.status(404).json({ message: 'API route not found.' }));
 app.use((err, req, res, next) => {
   console.error(err);
@@ -167,10 +245,32 @@ app.use((err, req, res, next) => {
 
 export async function connectDatabase() {
   if (mongoose.connection.readyState === 1) return;
-
   await mongoose.connect(process.env.MONGODB_URI);
   await Promise.all([User.init(), Professor.init(), Review.init()]);
+  await ensureAdminUser();
   console.log('MongoDB connected');
+}
+
+async function ensureAdminUser() {
+  const email = String(process.env.ADMIN_EMAIL || '').trim().toLowerCase();
+  const password = String(process.env.ADMIN_PASSWORD || '');
+  if (!email || !password) {
+    console.warn('ADMIN_EMAIL/ADMIN_PASSWORD are not set. Admin login is disabled until they are configured in Vercel environment variables.');
+    return;
+  }
+  if (password.length < 8) throw new Error('ADMIN_PASSWORD must be at least 8 characters.');
+  const passwordHash = await bcrypt.hash(password, 12);
+  const existing = await User.findOne({ email });
+  if (!existing) {
+    await User.create({ name: 'Administrator', email, university: '', passwordHash, role: 'admin' });
+    console.log(`Admin account created for ${email}`);
+  } else if (existing.role !== 'admin') {
+    existing.role = 'admin';
+    existing.passwordHash = passwordHash;
+    existing.name = existing.name || 'Administrator';
+    await existing.save();
+    console.log(`Existing account ${email} promoted to admin.`);
+  }
 }
 
 export { app };
