@@ -12,4 +12,4 @@ services:
       - key: JWT_SECRET
         sync: false
       - key: CLIENT_URL
-        value: https://sahsiddh989-wq.github.io
+        value: https://sahsiddh989-wq.github.io/professor-review-/
