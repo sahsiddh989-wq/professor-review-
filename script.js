@@ -19,13 +19,34 @@ const tokenKey = 'professor_review_token';
 
 function initials(name) { return name.split(' ').filter(Boolean).slice(-2).map(x => x[0]).join('').toUpperCase(); }
 function escapeHtml(value='') { return String(value).replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','"':'&quot;'}[c])); }
-function card(p) {
-  return `<article class="prof-card"><div class="prof-top"><div class="prof-photo">${escapeHtml(initials(p.name))}</div><div><h3>${escapeHtml(p.name)}</h3><small>${escapeHtml(p.course)}</small></div></div><div class="rating">★ ${Number(p.rating || 0).toFixed(1)} <span>(${Number(p.reviews || 0)} reviews)</span></div><span class="tag">${escapeHtml(p.tag || 'New')}</span><p class="prof-dept">${escapeHtml(p.dept || '')} Department</p><button class="btn btn-primary review-btn" data-id="${escapeHtml(p._id)}">View & Review</button></article>`;
-}
+function card(p) { return `<article class="prof-card"><div class="prof-top"><div class="prof-photo">${escapeHtml(initials(p.name))}</div><div><h3>${escapeHtml(p.name)}</h3><small>${escapeHtml(p.course)}</small></div></div><div class="rating">★ ${Number(p.rating || 0).toFixed(1)} <span>(${Number(p.reviews || 0)} reviews)</span></div><span class="tag">${escapeHtml(p.tag || 'New')}</span><p class="prof-dept">${escapeHtml(p.dept || '')} Department</p><button class="btn btn-primary review-btn" data-id="${escapeHtml(p._id)}">View & Review</button></article>`; }
 function render(list, el) { el.innerHTML = list.map(card).join('') || '<p class="empty-state">No professors found.</p>'; }
 function getToken() { return localStorage.getItem(tokenKey); }
-function setSession(data) { localStorage.setItem(tokenKey, data.token); localStorage.setItem('professor_review_user', JSON.stringify(data.user)); }
-function clearSession() { localStorage.removeItem(tokenKey); localStorage.removeItem('professor_review_user'); }
+function getUser() { try { return JSON.parse(localStorage.getItem('professor_review_user') || 'null'); } catch { return null; } }
+function setSession(data) { localStorage.setItem(tokenKey, data.token); localStorage.setItem('professor_review_user', JSON.stringify(data.user)); updateAuthUI(); }
+function clearSession() { localStorage.removeItem(tokenKey); localStorage.removeItem('professor_review_user'); updateAuthUI(); }
+function updateAuthUI() {
+  const loginButton = document.querySelector('.nav-links [data-auth="login"]');
+  const signupButton = document.querySelector('.nav-links [data-auth="signup"]');
+  if (!loginButton || !signupButton) return;
+  const loggedIn = !!getToken();
+  const user = getUser();
+  if (loggedIn) {
+    loginButton.textContent = user?.name ? `Hi, ${user.name.split(' ')[0]} 👋` : 'Account';
+    loginButton.removeAttribute('data-auth');
+    loginButton.dataset.account = 'true';
+    signupButton.textContent = 'Log Out';
+    signupButton.removeAttribute('data-auth');
+    signupButton.dataset.logout = 'true';
+  } else {
+    loginButton.textContent = 'Log In';
+    loginButton.removeAttribute('data-account');
+    loginButton.dataset.auth = 'login';
+    signupButton.textContent = 'Sign Up';
+    signupButton.removeAttribute('data-logout');
+    signupButton.dataset.auth = 'signup';
+  }
+}
 async function api(path, options={}) {
   if (!API_BASE) throw new Error('Backend URL is not configured yet.');
   const headers = { 'Content-Type':'application/json', ...(options.headers || {}) };
@@ -37,23 +58,26 @@ async function api(path, options={}) {
   return data;
 }
 async function loadProfessors(query='', minRating=0) {
-  try {
-    const data = await api(`/professors?q=${encodeURIComponent(query)}&minRating=${minRating}`);
-    professors = data.professors;
-  } catch { /* Demo data keeps the public page usable until backend deployment is configured. */ }
+  try { const data = await api(`/professors?q=${encodeURIComponent(query)}&minRating=${minRating}`); professors = data.professors; }
+  catch { /* Keep demo data if the public API is temporarily unavailable. */ }
   render(professors.slice(0,4), profGrid); render(professors, directoryGrid);
 }
 
-render(professors.slice(0,4), profGrid); render(professors, directoryGrid); loadProfessors();
+render(professors.slice(0,4), profGrid); render(professors, directoryGrid); updateAuthUI(); loadProfessors();
 
-document.addEventListener('click', async e => {
+document.addEventListener('click', e => {
   const reviewButton = e.target.closest('.review-btn');
   if (reviewButton) {
     currentReviewProfessor = professors.find(p => String(p._id) === String(reviewButton.dataset.id));
     if (!currentReviewProfessor) return;
     document.getElementById('reviewTitle').textContent = `Review ${currentReviewProfessor.name}`;
     openReviewModal();
+    return;
   }
+  const authButton = e.target.closest('[data-auth]');
+  if (authButton) { openAuth(authButton.dataset.auth); return; }
+  const logoutButton = e.target.closest('[data-logout]');
+  if (logoutButton) { clearSession(); alert('You have been logged out.'); return; }
 });
 
 const menuBtn = document.getElementById('menuBtn');
@@ -62,16 +86,16 @@ menuBtn.addEventListener('click', () => navLinks.classList.toggle('open'));
 document.querySelectorAll('.nav-links a').forEach(a => a.addEventListener('click', () => navLinks.classList.remove('open')));
 
 function openAuth(mode='login') {
-  modal.classList.add('open', mode === 'signup' ? 'signup' : 'login'); modal.setAttribute('aria-hidden','false'); document.body.style.overflow='hidden';
+  modal.classList.add('open', mode === 'signup' ? 'signup' : 'login');
+  modal.setAttribute('aria-hidden','false');
+  document.body.style.overflow='hidden';
   document.getElementById('authSubmit').textContent = mode === 'signup' ? 'Sign Up' : 'Log In';
-  document.getElementById('switchAuth').innerHTML = mode === 'signup' ? 'Already have an account? <button data-auth="login">Log in</button>' : "Don't have an account? <button data-auth=\"signup\">Sign up</button>";
-  document.querySelectorAll('#switchAuth [data-auth]').forEach(b => b.addEventListener('click', () => openAuth(b.dataset.auth)));
+  document.getElementById('switchAuth').innerHTML = mode === 'signup' ? 'Already have an account? <button data-auth="login">Log in</button>' : 'Don\'t have an account? <button data-auth="signup">Sign up</button>';
 }
 function closeAuth() { modal.classList.remove('open','signup','login'); modal.setAttribute('aria-hidden','true'); if (!reviewModal.classList.contains('open')) document.body.style.overflow=''; }
 function openReviewModal() { reviewModal.classList.add('open'); reviewModal.setAttribute('aria-hidden','false'); document.body.style.overflow='hidden'; }
 function closeReviewModal() { reviewModal.classList.remove('open'); reviewModal.setAttribute('aria-hidden','true'); if (!modal.classList.contains('open')) document.body.style.overflow=''; }
 
-document.querySelectorAll('[data-auth]').forEach(b => b.addEventListener('click', () => openAuth(b.dataset.auth)));
 document.querySelectorAll('[data-close="modal"]').forEach(b => b.addEventListener('click', closeAuth));
 document.querySelectorAll('[data-close="review"]').forEach(b => b.addEventListener('click', closeReviewModal));
 document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeAuth(); closeReviewModal(); } });
@@ -81,27 +105,32 @@ authForm.addEventListener('submit', async e => {
   const signup = modal.classList.contains('signup');
   const payload = { email: document.getElementById('email').value.trim(), password: document.getElementById('password').value };
   if (signup) {
-    payload.name = document.getElementById('fullName').value.trim(); payload.university = document.getElementById('university').value;
+    payload.name = document.getElementById('fullName').value.trim();
+    payload.university = document.getElementById('university').value;
     if (payload.password !== document.getElementById('confirmPassword').value) return alert('Passwords do not match.');
   }
   try {
     const data = await api(signup ? '/auth/register' : '/auth/login', { method:'POST', body:JSON.stringify(payload) });
-    setSession(data); alert(signup ? 'Account created successfully.' : 'Login successful.'); closeAuth();
-  } catch (error) {
-    if (!API_BASE) return alert('Backend is not connected yet. Deploy the backend and set the API URL in api-config.js.');
-    alert(error.message);
-  }
+    setSession(data);
+    alert(signup ? 'Account created successfully.' : 'Login successful.');
+    closeAuth();
+  } catch (error) { alert(error.message); }
 });
 
 async function filterDirectory() {
-  const q = document.getElementById('directorySearch').value.trim(); const min = Number(document.getElementById('ratingFilter').value);
+  const q = document.getElementById('directorySearch').value.trim();
+  const min = Number(document.getElementById('ratingFilter').value);
   await loadProfessors(q, min);
 }
 document.getElementById('directorySearch').addEventListener('input', filterDirectory);
 document.getElementById('ratingFilter').addEventListener('change', filterDirectory);
 
 document.getElementById('heroSearch').addEventListener('submit', async e => {
-  e.preventDefault(); const q = document.getElementById('heroQuery').value.trim(); document.getElementById('directorySearch').value=q; document.getElementById('directory').scrollIntoView({behavior:'smooth'}); await filterDirectory();
+  e.preventDefault();
+  const q = document.getElementById('heroQuery').value.trim();
+  document.getElementById('directorySearch').value=q;
+  document.getElementById('directory').scrollIntoView({behavior:'smooth'});
+  await filterDirectory();
 });
 document.querySelectorAll('.trending button,.course-card').forEach(b => b.addEventListener('click', () => { document.getElementById('heroQuery').value = b.dataset.course || b.textContent; document.getElementById('heroSearch').dispatchEvent(new Event('submit')); }));
 
@@ -110,7 +139,10 @@ document.getElementById('reviewForm').addEventListener('submit', async e => {
   if (!getToken()) { closeReviewModal(); openAuth('login'); return; }
   try {
     await api('/reviews', { method:'POST', body:JSON.stringify({ professorId:currentReviewProfessor._id, rating:Number(document.getElementById('reviewRating').value), teachingQuality:Number(document.getElementById('teachingQuality').value), difficulty:Number(document.getElementById('difficulty').value), comment:document.getElementById('reviewComment').value.trim() }) });
-    alert('Review published successfully.'); document.getElementById('reviewForm').reset(); closeReviewModal(); await loadProfessors(document.getElementById('directorySearch').value, Number(document.getElementById('ratingFilter').value));
+    alert('Review published successfully.');
+    document.getElementById('reviewForm').reset();
+    closeReviewModal();
+    await loadProfessors(document.getElementById('directorySearch').value, Number(document.getElementById('ratingFilter').value));
   } catch (error) { alert(error.message); }
 });
 
