@@ -165,10 +165,24 @@ app.use((err, req, res, next) => {
   res.status(500).json({ message: 'Server error. Please try again.' });
 });
 
-async function start() {
+export async function connectDatabase() {
+  if (mongoose.connection.readyState === 1) return;
+
   await mongoose.connect(process.env.MONGODB_URI);
   await Promise.all([User.init(), Professor.init(), Review.init()]);
   console.log('MongoDB connected');
+}
+
+export { app };
+
+async function start() {
+  await connectDatabase();
   app.listen(PORT, () => console.log(`Professor Review API running on port ${PORT}`));
 }
-start().catch((error) => { console.error('Failed to start server:', error); process.exit(1); });
+
+if (!process.env.VERCEL) {
+  start().catch((error) => {
+    console.error('Failed to start server:', error);
+    process.exit(1);
+  });
+}
