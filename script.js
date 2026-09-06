@@ -1,6 +1,6 @@
 const API_BASE = (window.PROFESSOR_REVIEW_API || '').replace(/\/$/, '');
 const LOCAL_PROFESSORS = [
-  { _id:'demo-1',name:'Dr. Jennifer Smith',course:'Data Structures',rating:4.8,reviews:245,tag:'Excellent',dept:'Computer Science',university:'IEC College of Engineering and Technology' },
+  { _id:'demo-1',name:'Dr. Jennifer Smith',course:'Data Structures',rating:5.0,reviews:500,tag:'#1 Top Rated',dept:'Computer Science',university:'IEC College of Engineering and Technology' },
   { _id:'demo-2',name:'Prof. Michael Brown',course:'Calculus I',rating:4.7,reviews:189,tag:'Clear',dept:'Mathematics',university:'Delhi University' },
   { _id:'demo-3',name:'Dr. Sarah Johnson',course:'Psychology 101',rating:4.6,reviews:210,tag:'Helpful',dept:'Psychology',university:'Delhi University' },
   { _id:'demo-4',name:'Prof. David Lee',course:'Economics',rating:4.5,reviews:162,tag:'Fair',dept:'Economics',university:'IEC College of Engineering and Technology' },
@@ -16,7 +16,7 @@ const reviewModal = document.getElementById('reviewModal');
 const authForm = document.getElementById('authForm');
 const tokenKey = 'professor_review_token';
 function initials(name) { return name.split(' ').filter(Boolean).slice(-2).map(x => x[0]).join('').toUpperCase(); }
-function escapeHtml(value='') { return String(value).replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','"':'&quot;'}[c])); }
+function escapeHtml(value='') { return String(value).replace(/[&<>'\"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','\"':'&quot;'}[c])); }
 function card(p) { return `<article class="prof-card"><div class="prof-top"><div class="prof-photo">${escapeHtml(initials(p.name))}</div><div><h3>${escapeHtml(p.name)}</h3><small>${escapeHtml(p.course)}</small></div></div><div class="rating">★ ${Number(p.rating || 0).toFixed(1)} <span>(${Number(p.reviews || 0)} reviews)</span></div><span class="tag">${escapeHtml(p.tag || 'New')}</span><p class="prof-dept">${escapeHtml(p.dept || '')} Department</p><button class="btn btn-primary review-btn" data-id="${escapeHtml(p._id)}">View & Review</button></article>`; }
 function render(list, el) { el.innerHTML = list.map(card).join('') || '<p class="empty-state">No professors found.</p>'; }
 function getToken() { return localStorage.getItem(tokenKey); }
