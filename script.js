@@ -27,6 +27,26 @@ function clearSession() { localStorage.removeItem(tokenKey); localStorage.remove
 function updateAuthUI() { const a = document.querySelector('.nav-links [data-auth="login"], .nav-links [data-account="true"]'), b = document.querySelector('.nav-links [data-auth="signup"], .nav-links [data-logout="true"]'); if (!a || !b) return; const logged = !!getToken(), u = getUser(); if (logged) { a.textContent = u?.name ? `Hi, ${u.name.split(' ')[0]} 👋` : 'Account'; a.removeAttribute('data-auth'); a.dataset.account = 'true'; b.textContent = 'Log Out'; b.removeAttribute('data-auth'); b.dataset.logout = 'true'; } else { a.textContent = 'Log In'; a.removeAttribute('data-account'); a.dataset.auth = 'login'; b.textContent = 'Sign Up'; b.removeAttribute('data-logout'); b.dataset.auth = 'signup'; } }
 async function api(path, options = {}) { if (!API_BASE) throw new Error('Backend URL is not configured yet.'); const headers = { 'Content-Type':'application/json', ...(options.headers || {}) }, token = getToken(); if (token) headers.Authorization = `Bearer ${token}`; const response = await fetch(`${API_BASE}${path}`, { ...options, headers }); const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.message || 'Request failed.'); return data; }
 
+function updateTopProfessorProfile() {
+  const top = professors[0];
+  if (!top) return;
+  const name = document.getElementById('heroProfessorName');
+  const course = document.getElementById('heroProfessorCourse');
+  const rating = document.getElementById('heroProfessorRating');
+  const avatar = document.getElementById('heroProfessorAvatar');
+  const profileAvatar = document.getElementById('heroProfileAvatar');
+  const profileRating = document.getElementById('heroProfileRating');
+  const profileInfo = document.getElementById('heroProfileInfo');
+  const initialsText = initials(top.name);
+  if (name) name.textContent = top.name;
+  if (course) course.textContent = `${top.course || 'Professor'} · #1 Top Rated`;
+  if (rating) rating.textContent = `${Number(top.rating || 0).toFixed(1)} ★`;
+  if (avatar) avatar.textContent = initialsText;
+  if (profileAvatar) profileAvatar.textContent = initialsText;
+  if (profileRating) profileRating.textContent = Number(top.rating || 0).toFixed(1);
+  if (profileInfo) profileInfo.textContent = `#1 Top Rated · ${Number(top.reviews || 0)} reviews`;
+}
+
 async function loadProfessors(query = '', minRating = 0) {
   try {
     const data = await api(`/professors?q=${encodeURIComponent(query)}&minRating=${minRating}`);
@@ -34,14 +54,16 @@ async function loadProfessors(query = '', minRating = 0) {
   } catch (error) {
     professors = [...LOCAL_PROFESSORS];
   }
-  // Keep all existing professor data; only sort the displayed list by ranking.
+  // Keep every professor and every existing section; only sort by ranking.
   professors.sort((a, b) => Number(b.rating || 0) - Number(a.rating || 0) || Number(b.reviews || 0) - Number(a.reviews || 0));
+  updateTopProfessorProfile();
   render(professors.slice(0, 4), profGrid);
   render(professors, directoryGrid);
 }
 
 render(professors.slice(0, 4), profGrid);
 render(professors, directoryGrid);
+updateTopProfessorProfile();
 updateAuthUI();
 loadProfessors();
 
