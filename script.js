@@ -30,21 +30,26 @@ async function api(path, options = {}) { if (!API_BASE) throw new Error('Backend
 function updateTopProfessorProfile() {
   const top = professors[0];
   if (!top) return;
-  const name = document.getElementById('heroProfessorName');
-  const course = document.getElementById('heroProfessorCourse');
-  const rating = document.getElementById('heroProfessorRating');
-  const avatar = document.getElementById('heroProfessorAvatar');
+  const avatar = escapeHtml(initials(top.name));
+  const name = escapeHtml(top.name);
+  const course = escapeHtml(top.course || 'Professor');
+  const rating = Number(top.rating || 0).toFixed(1);
+  const reviews = Number(top.reviews || 0);
+  const tag = escapeHtml(top.tag || '#1 Top Rated');
+  const heroName = document.getElementById('heroProfessorName');
+  const heroCourse = document.getElementById('heroProfessorCourse');
+  const heroRating = document.getElementById('heroProfessorRating');
+  const heroAvatar = document.getElementById('heroProfessorAvatar');
   const profileAvatar = document.getElementById('heroProfileAvatar');
   const profileRating = document.getElementById('heroProfileRating');
   const profileInfo = document.getElementById('heroProfileInfo');
-  const initialsText = initials(top.name);
-  if (name) name.textContent = top.name;
-  if (course) course.textContent = `${top.course || 'Professor'} · #1 Top Rated`;
-  if (rating) rating.textContent = `${Number(top.rating || 0).toFixed(1)} ★`;
-  if (avatar) avatar.textContent = initialsText;
-  if (profileAvatar) profileAvatar.textContent = initialsText;
-  if (profileRating) profileRating.textContent = Number(top.rating || 0).toFixed(1);
-  if (profileInfo) profileInfo.textContent = `#1 Top Rated · ${Number(top.reviews || 0)} reviews`;
+  if (heroName) heroName.textContent = name;
+  if (heroCourse) heroCourse.textContent = `${course} · ${tag}`;
+  if (heroRating) heroRating.textContent = `${rating} ★`;
+  if (heroAvatar) heroAvatar.textContent = avatar;
+  if (profileAvatar) profileAvatar.textContent = avatar;
+  if (profileRating) profileRating.textContent = rating;
+  if (profileInfo) profileInfo.textContent = `${tag} · ${reviews} reviews · Highest ranked`;
 }
 
 async function loadProfessors(query = '', minRating = 0) {
@@ -54,11 +59,10 @@ async function loadProfessors(query = '', minRating = 0) {
   } catch (error) {
     professors = [...LOCAL_PROFESSORS];
   }
-  // Keep every professor and every existing section; only sort by ranking.
   professors.sort((a, b) => Number(b.rating || 0) - Number(a.rating || 0) || Number(b.reviews || 0) - Number(a.reviews || 0));
-  updateTopProfessorProfile();
   render(professors.slice(0, 4), profGrid);
   render(professors, directoryGrid);
+  updateTopProfessorProfile();
 }
 
 render(professors.slice(0, 4), profGrid);
