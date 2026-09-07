@@ -1,15 +1,24 @@
 import OpenAI from 'openai';
 import { Professor, Review } from './models.js';
 
+// Extend the existing Review schema at runtime so older MongoDB documents remain compatible.
+Review.schema.add({
+  aiSentiment: { type: String, enum: ['positive', 'neutral', 'negative', 'unknown'], default: 'unknown', index: true },
+  aiSentimentScore: { type: Number, min: 0, max: 1, default: 0 },
+  aiTags: { type: [String], default: [] },
+  aiModeration: { type: String, enum: ['approved', 'rejected', 'unknown'], default: 'unknown' },
+  aiModerationReason: { type: String, default: '', maxlength: 500 }
+});
+
 const model = process.env.OPENAI_MODEL || 'gpt-5.6-luna';
 let client;
 function getClient() {
-  if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is not configured.');
+  if (!process.env.OPENAI_API_KEY) throw Object.assign(new Error('Sidd AI is not configured. Add OPENAI_API_KEY to Vercel Environment Variables.'), { status: 503 });
   client ||= new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   return client;
 }
 
-const clean = (value = '') => String(value).replace(/\s+/g, ' ').trim();
+const clean = (value = '') => String(value).replace(/\s+/g, ' ').trim().slice(0, 6000);
 const reviewText = (reviews) => reviews.map((r) => `Rating ${r.rating}/5, teaching ${r.teachingQuality}/5, difficulty ${r.difficulty}/5: ${clean(r.comment)}`).join('\n');
 
 async function ask(system, user) {
@@ -44,7 +53,7 @@ export async function aiSearch(query) {
 
 export async function recommend(preferences) {
   const professors = await Professor.find().sort({ rating: -1, reviews: -1 }).limit(100).lean();
-  const answer = await ask('You are Sidd AI recommending professors. Return JSON only as {"ids":[...],"reason":"..."}. Use only supplied IDs. Never claim facts not present in the data.', `Student preferences: ${JSON.stringify(preferences)}\nCandidates:\n${professors.map((p) => `${p._id} | ${p.name} | ${p.course} | ${p.dept} | ${p.university} | rating ${p.rating} | reviews ${p.reviews}`).join('\n')}`);
+  const answer = await ask('You are Sidd AI recommending professors. Return JSON only as {"ids":[...],"reason":"..."}. Use only supplied IDs. Never claim facts not present in the data.', `Student preferences: ${JSON.stringify(preferences).slice(0, 4000)}\nCandidates:\n${professors.map((p) => `${p._id} | ${p.name} | ${p.course} | ${p.dept} | ${p.university} | rating ${p.rating} | reviews ${p.reviews}`).join('\n')}`);
   try { const parsed = JSON.parse(answer); const ids = parsed.ids || []; const byId = new Map(professors.map((p) => [String(p._id), p])); return { reason: parsed.reason || '', professors: ids.map((id) => byId.get(String(id))).filter(Boolean).slice(0, 10) }; } catch { return { reason: 'Recommendations are temporarily unavailable.', professors: professors.slice(0, 5) }; }
 }
 
