@@ -1,102 +1,36 @@
 const API_BASE = (window.PROFESSOR_REVIEW_API || '').replace(/\/$/, '');
 const LOCAL_PROFESSORS = [
-  { _id:'demo-1', name:'Dr. Jennifer Smith', course:'Data Structures', rating:5.0, reviews:500, tag:'#1 Top Rated', dept:'Computer Science', university:'IEC College of Engineering and Technology' },
-  { _id:'demo-2', name:'Prof. Michael Brown', course:'Calculus I', rating:4.7, reviews:189, tag:'Clear', dept:'Mathematics', university:'Delhi University' },
-  { _id:'demo-3', name:'Dr. Sarah Johnson', course:'Psychology 101', rating:4.6, reviews:210, tag:'Helpful', dept:'Psychology', university:'Delhi University' },
-  { _id:'demo-4', name:'Prof. David Lee', course:'Economics', rating:4.5, reviews:162, tag:'Fair', dept:'Economics', university:'IEC College of Engineering and Technology' },
-  { _id:'demo-5', name:'Dr. Emily Carter', course:'Operating Systems', rating:4.8, reviews:137, tag:'Engaging', dept:'Computer Science', university:'IEC College of Engineering and Technology' },
-  { _id:'demo-6', name:'Prof. Daniel Wilson', course:'Statistics', rating:4.7, reviews:118, tag:'Supportive', dept:'Mathematics', university:'Delhi University' }
+  {_id:'demo-1',name:'Dr. Jennifer Smith',course:'Data Structures',rating:5.0,reviews:500,tag:'#1 Top Rated',dept:'Computer Science',university:'IEC College of Engineering and Technology'},
+  {_id:'demo-2',name:'Prof. Michael Brown',course:'Calculus I',rating:4.7,reviews:189,tag:'Clear',dept:'Mathematics',university:'Delhi University'},
+  {_id:'demo-3',name:'Dr. Sarah Johnson',course:'Psychology 101',rating:4.6,reviews:210,tag:'Helpful',dept:'Psychology',university:'Delhi University'},
+  {_id:'demo-4',name:'Prof. David Lee',course:'Economics',rating:4.5,reviews:162,tag:'Fair',dept:'Economics',university:'IEC College of Engineering and Technology'},
+  {_id:'demo-5',name:'Dr. Emily Carter',course:'Operating Systems',rating:4.8,reviews:137,tag:'Engaging',dept:'Computer Science',university:'IEC College of Engineering and Technology'},
+  {_id:'demo-6',name:'Prof. Daniel Wilson',course:'Statistics',rating:4.7,reviews:118,tag:'Supportive',dept:'Mathematics',university:'Delhi University'}
 ];
-let professors = [...LOCAL_PROFESSORS];
-let currentReviewProfessor = null;
-const profGrid = document.getElementById('profGrid');
-const directoryGrid = document.getElementById('directoryGrid');
-const modal = document.getElementById('authModal');
-const reviewModal = document.getElementById('reviewModal');
-const authForm = document.getElementById('authForm');
-const tokenKey = 'professor_review_token';
+let professors=[...LOCAL_PROFESSORS],currentReviewProfessor=null;
+const profGrid=document.getElementById('profGrid'),directoryGrid=document.getElementById('directoryGrid'),modal=document.getElementById('authModal'),reviewModal=document.getElementById('reviewModal'),authForm=document.getElementById('authForm'),tokenKey='professor_review_token';
+function initials(name){return name.split(' ').filter(Boolean).slice(-2).map(x=>x[0]).join('').toUpperCase();}
+function escapeHtml(value=''){return String(value).replace(/[&<>\'\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','\"':'&quot;'}[c]));}
+function card(p){return `<article class="prof-card"><div class="prof-top"><div class="prof-photo">${escapeHtml(initials(p.name))}</div><div><h3>${escapeHtml(p.name)}</h3><small>${escapeHtml(p.course)}</small></div></div><div class="rating">★ ${Number(p.rating||0).toFixed(1)} <span>(${Number(p.reviews||0)} reviews)</span></div><span class="tag">${escapeHtml(p.tag||'New')}</span><p class="prof-dept">${escapeHtml(p.dept||'')} Department</p><button class="btn btn-primary review-btn" data-id="${escapeHtml(p._id)}">View & Review</button><button class="sidd-insight-btn" data-ai-prof="${escapeHtml(p._id)}">✨ AI Insights</button></article>`;}
+function render(list,el){if(el)el.innerHTML=list.map(card).join('')||'<p class="empty-state">No professors found.</p>';}
+function getToken(){return localStorage.getItem(tokenKey);} function getUser(){try{return JSON.parse(localStorage.getItem('professor_review_user')||'null');}catch{return null;}}
+function setSession(data){localStorage.setItem(tokenKey,data.token);localStorage.setItem('professor_review_user',JSON.stringify(data.user));updateAuthUI();} function clearSession(){localStorage.removeItem(tokenKey);localStorage.removeItem('professor_review_user');updateAuthUI();}
+function updateAuthUI(){const a=document.querySelector('.nav-links [data-auth="login"], .nav-links [data-account="true"]'),b=document.querySelector('.nav-links [data-auth="signup"], .nav-links [data-logout="true"]');if(!a||!b)return;const logged=!!getToken(),u=getUser();if(logged){a.textContent=u?.name?`Hi, ${u.name.split(' ')[0]} 👋`:'Account';a.removeAttribute('data-auth');a.dataset.account='true';b.textContent='Log Out';b.removeAttribute('data-auth');b.dataset.logout='true';}else{a.textContent='Log In';a.removeAttribute('data-account');a.dataset.auth='login';b.textContent='Sign Up';b.removeAttribute('data-logout');b.dataset.auth='signup';}}
+async function api(path,options={}){if(!API_BASE)throw new Error('Backend URL is not configured yet.');const headers={'Content-Type':'application/json',...(options.headers||{})},token=getToken();if(token)headers.Authorization=`Bearer ${token}`;const response=await fetch(`${API_BASE}${path}`,{...options,headers});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.message||'Request failed.');return data;}
+function updateTopProfessorProfile(){const top=professors[0];if(!top)return;const avatar=escapeHtml(initials(top.name)),name=escapeHtml(top.name),course=escapeHtml(top.course||'Professor'),rating=Number(top.rating||0).toFixed(1),reviews=Number(top.reviews||0),tag=escapeHtml(top.tag||'#1 Top Rated');const ids=['heroProfessorName','heroProfessorCourse','heroProfessorRating','heroProfessorAvatar','heroProfileAvatar','heroProfileRating','heroProfileInfo'];const vals=[name,`${course} · ${tag}`,`${rating} ★`,avatar,avatar,rating,`${tag} · ${reviews} reviews · Highest ranked`];ids.forEach((id,i)=>{const e=document.getElementById(id);if(e)e.textContent=vals[i];});}
+async function loadProfessors(query='',minRating=0){try{const data=await api(`/professors?q=${encodeURIComponent(query)}&minRating=${minRating}`);professors=Array.isArray(data.professors)?data.professors:[];}catch{professors=[...LOCAL_PROFESSORS];}professors.sort((a,b)=>Number(b.rating||0)-Number(a.rating||0)||Number(b.reviews||0)-Number(a.reviews||0));render(professors.slice(0,4),profGrid);render(professors,directoryGrid);updateTopProfessorProfile();}
+render(professors.slice(0,4),profGrid);render(professors,directoryGrid);updateTopProfessorProfile();updateAuthUI();loadProfessors();
+document.addEventListener('click',e=>{const logoutButton=e.target.closest('[data-logout="true"]');if(logoutButton){e.preventDefault();clearSession();alert('You have been logged out.');return;}const ai=e.target.closest('[data-ai-prof]');if(ai){openInsights(ai.dataset.aiProf);return;}const reviewButton=e.target.closest('.review-btn');if(reviewButton){currentReviewProfessor=professors.find(p=>String(p._id)===String(reviewButton.dataset.id));if(currentReviewProfessor){document.getElementById('reviewTitle').textContent=`Review ${currentReviewProfessor.name}`;openReviewModal();}return;}const authButton=e.target.closest('[data-auth]');if(authButton){e.preventDefault();openAuth(authButton.dataset.auth);}});
+const menuBtn=document.getElementById('menuBtn'),navLinks=document.getElementById('navLinks');if(menuBtn)menuBtn.addEventListener('click',()=>navLinks.classList.toggle('open'));document.querySelectorAll('.nav-links a').forEach(a=>a.addEventListener('click',()=>navLinks.classList.remove('open')));
+function openAuth(mode='login'){modal.classList.add('open',mode==='signup'?'signup':'login');modal.setAttribute('aria-hidden','false');document.body.style.overflow='hidden';document.getElementById('authSubmit').textContent=mode==='signup'?'Sign Up':'Log In';document.getElementById('switchAuth').innerHTML=mode==='signup'?`Already have an account? <button type="button" data-auth="login">Log in</button>`:`Don't have an account? <button type="button" data-auth="signup">Sign up</button>`;}function closeAuth(){modal.classList.remove('open','signup','login');modal.setAttribute('aria-hidden','true');if(!reviewModal.classList.contains('open'))document.body.style.overflow='';}function openReviewModal(){reviewModal.classList.add('open');reviewModal.setAttribute('aria-hidden','false');document.body.style.overflow='hidden';}function closeReviewModal(){reviewModal.classList.remove('open');reviewModal.setAttribute('aria-hidden','true');if(!modal.classList.contains('open'))document.body.style.overflow='';}
+document.querySelectorAll('[data-close="modal"]').forEach(b=>b.addEventListener('click',closeAuth));document.querySelectorAll('[data-close="review"]').forEach(b=>b.addEventListener('click',closeReviewModal));document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeAuth();closeReviewModal();}});
+authForm.addEventListener('submit',async e=>{e.preventDefault();const signup=modal.classList.contains('signup'),payload={email:document.getElementById('email').value.trim(),password:document.getElementById('password').value};if(signup){payload.name=document.getElementById('fullName').value.trim();payload.university=document.getElementById('university').value;if(payload.password!==document.getElementById('confirmPassword').value)return alert('Passwords do not match.');}try{const data=await api(signup?'/auth/register':'/auth/login',{method:'POST',body:JSON.stringify(payload)});setSession(data);alert(signup?'Account created successfully.':'Login successful.');closeAuth();}catch(error){alert(error.message);}});
+async function filterDirectory(){await loadProfessors(document.getElementById('directorySearch').value.trim(),Number(document.getElementById('ratingFilter').value));}
+document.getElementById('directorySearch').addEventListener('input',filterDirectory);document.getElementById('ratingFilter').addEventListener('change',filterDirectory);document.getElementById('heroSearch').addEventListener('submit',async e=>{e.preventDefault();const q=document.getElementById('heroQuery').value.trim();document.getElementById('directorySearch').value=q;document.getElementById('directory').scrollIntoView({behavior:'smooth'});await filterDirectory();});document.querySelectorAll('.trending button,.course-card').forEach(b=>b.addEventListener('click',()=>{document.getElementById('heroQuery').value=b.dataset.course||b.textContent;document.getElementById('heroSearch').dispatchEvent(new Event('submit'));}));
+document.getElementById('reviewForm').addEventListener('submit',async e=>{e.preventDefault();if(!getToken()){closeReviewModal();openAuth('login');return;}try{await api('/reviews',{method:'POST',body:JSON.stringify({professorId:currentReviewProfessor._id,rating:Number(document.getElementById('reviewRating').value),teachingQuality:Number(document.getElementById('teachingQuality').value),difficulty:Number(document.getElementById('difficulty').value),comment:document.getElementById('reviewComment').value.trim()})});alert('Review published successfully. Sidd AI checked the review for quality and safety.');document.getElementById('reviewForm').reset();closeReviewModal();await filterDirectory();}catch(error){alert(error.message);}});document.getElementById('year').textContent=new Date().getFullYear();
 
-function initials(name) { return name.split(' ').filter(Boolean).slice(-2).map(x => x[0]).join('').toUpperCase(); }
-function escapeHtml(value = '') { return String(value).replace(/[&<>\'\"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#039;', '\"':'&quot;' }[c])); }
-function card(p) { return `<article class="prof-card"><div class="prof-top"><div class="prof-photo">${escapeHtml(initials(p.name))}</div><div><h3>${escapeHtml(p.name)}</h3><small>${escapeHtml(p.course)}</small></div></div><div class="rating">★ ${Number(p.rating || 0).toFixed(1)} <span>(${Number(p.reviews || 0)} reviews)</span></div><span class="tag">${escapeHtml(p.tag || 'New')}</span><p class="prof-dept">${escapeHtml(p.dept || '')} Department</p><button class="btn btn-primary review-btn" data-id="${escapeHtml(p._id)}">View & Review</button></article>`; }
-function render(list, el) { el.innerHTML = list.map(card).join('') || '<p class="empty-state">No professors found.</p>'; }
-function getToken() { return localStorage.getItem(tokenKey); }
-function getUser() { try { return JSON.parse(localStorage.getItem('professor_review_user') || 'null'); } catch { return null; } }
-function setSession(data) { localStorage.setItem(tokenKey, data.token); localStorage.setItem('professor_review_user', JSON.stringify(data.user)); updateAuthUI(); }
-function clearSession() { localStorage.removeItem(tokenKey); localStorage.removeItem('professor_review_user'); updateAuthUI(); }
-function updateAuthUI() { const a = document.querySelector('.nav-links [data-auth="login"], .nav-links [data-account="true"]'), b = document.querySelector('.nav-links [data-auth="signup"], .nav-links [data-logout="true"]'); if (!a || !b) return; const logged = !!getToken(), u = getUser(); if (logged) { a.textContent = u?.name ? `Hi, ${u.name.split(' ')[0]} 👋` : 'Account'; a.removeAttribute('data-auth'); a.dataset.account = 'true'; b.textContent = 'Log Out'; b.removeAttribute('data-auth'); b.dataset.logout = 'true'; } else { a.textContent = 'Log In'; a.removeAttribute('data-account'); a.dataset.auth = 'login'; b.textContent = 'Sign Up'; b.removeAttribute('data-logout'); b.dataset.auth = 'signup'; } }
-async function api(path, options = {}) { if (!API_BASE) throw new Error('Backend URL is not configured yet.'); const headers = { 'Content-Type':'application/json', ...(options.headers || {}) }, token = getToken(); if (token) headers.Authorization = `Bearer ${token}`; const response = await fetch(`${API_BASE}${path}`, { ...options, headers }); const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.message || 'Request failed.'); return data; }
-
-function updateTopProfessorProfile() {
-  const top = professors[0];
-  if (!top) return;
-  const avatar = escapeHtml(initials(top.name));
-  const name = escapeHtml(top.name);
-  const course = escapeHtml(top.course || 'Professor');
-  const rating = Number(top.rating || 0).toFixed(1);
-  const reviews = Number(top.reviews || 0);
-  const tag = escapeHtml(top.tag || '#1 Top Rated');
-  const heroName = document.getElementById('heroProfessorName');
-  const heroCourse = document.getElementById('heroProfessorCourse');
-  const heroRating = document.getElementById('heroProfessorRating');
-  const heroAvatar = document.getElementById('heroProfessorAvatar');
-  const profileAvatar = document.getElementById('heroProfileAvatar');
-  const profileRating = document.getElementById('heroProfileRating');
-  const profileInfo = document.getElementById('heroProfileInfo');
-  if (heroName) heroName.textContent = name;
-  if (heroCourse) heroCourse.textContent = `${course} · ${tag}`;
-  if (heroRating) heroRating.textContent = `${rating} ★`;
-  if (heroAvatar) heroAvatar.textContent = avatar;
-  if (profileAvatar) profileAvatar.textContent = avatar;
-  if (profileRating) profileRating.textContent = rating;
-  if (profileInfo) profileInfo.textContent = `${tag} · ${reviews} reviews · Highest ranked`;
-}
-
-async function loadProfessors(query = '', minRating = 0) {
-  try {
-    const data = await api(`/professors?q=${encodeURIComponent(query)}&minRating=${minRating}`);
-    professors = Array.isArray(data.professors) ? data.professors : [];
-  } catch (error) {
-    professors = [...LOCAL_PROFESSORS];
-  }
-  professors.sort((a, b) => Number(b.rating || 0) - Number(a.rating || 0) || Number(b.reviews || 0) - Number(a.reviews || 0));
-  render(professors.slice(0, 4), profGrid);
-  render(professors, directoryGrid);
-  updateTopProfessorProfile();
-}
-
-render(professors.slice(0, 4), profGrid);
-render(professors, directoryGrid);
-updateTopProfessorProfile();
-updateAuthUI();
-loadProfessors();
-
-document.addEventListener('click', e => {
-  const logoutButton = e.target.closest('[data-logout="true"]');
-  if (logoutButton) { e.preventDefault(); clearSession(); alert('You have been logged out.'); return; }
-  const reviewButton = e.target.closest('.review-btn');
-  if (reviewButton) { currentReviewProfessor = professors.find(p => String(p._id) === String(reviewButton.dataset.id)); if (currentReviewProfessor) { document.getElementById('reviewTitle').textContent = `Review ${currentReviewProfessor.name}`; openReviewModal(); } return; }
-  const authButton = e.target.closest('[data-auth]');
-  if (authButton) { e.preventDefault(); openAuth(authButton.dataset.auth); }
-});
-
-const menuBtn = document.getElementById('menuBtn');
-const navLinks = document.getElementById('navLinks');
-menuBtn.addEventListener('click', () => navLinks.classList.toggle('open'));
-document.querySelectorAll('.nav-links a').forEach(a => a.addEventListener('click', () => navLinks.classList.remove('open')));
-function openAuth(mode = 'login') { modal.classList.add('open', mode === 'signup' ? 'signup' : 'login'); modal.setAttribute('aria-hidden','false'); document.body.style.overflow='hidden'; document.getElementById('authSubmit').textContent = mode === 'signup' ? 'Sign Up' : 'Log In'; document.getElementById('switchAuth').innerHTML = mode === 'signup' ? `Already have an account? <button type="button" data-auth="login">Log in</button>` : `Don't have an account? <button type="button" data-auth="signup">Sign up</button>`; }
-function closeAuth() { modal.classList.remove('open','signup','login'); modal.setAttribute('aria-hidden','true'); if (!reviewModal.classList.contains('open')) document.body.style.overflow=''; }
-function openReviewModal() { reviewModal.classList.add('open'); reviewModal.setAttribute('aria-hidden','false'); document.body.style.overflow='hidden'; }
-function closeReviewModal() { reviewModal.classList.remove('open'); reviewModal.setAttribute('aria-hidden','true'); if (!modal.classList.contains('open')) document.body.style.overflow=''; }
-document.querySelectorAll('[data-close="modal"]').forEach(b => b.addEventListener('click', closeAuth));
-document.querySelectorAll('[data-close="review"]').forEach(b => b.addEventListener('click', closeReviewModal));
-document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeAuth(); closeReviewModal(); } });
-
-authForm.addEventListener('submit', async e => { e.preventDefault(); const signup = modal.classList.contains('signup'); const payload = { email: document.getElementById('email').value.trim(), password: document.getElementById('password').value }; if (signup) { payload.name = document.getElementById('fullName').value.trim(); payload.university = document.getElementById('university').value; if (payload.password !== document.getElementById('confirmPassword').value) return alert('Passwords do not match.'); } try { const data = await api(signup ? '/auth/register' : '/auth/login', { method:'POST', body:JSON.stringify(payload) }); setSession(data); alert(signup ? 'Account created successfully.' : 'Login successful.'); closeAuth(); } catch (error) { alert(error.message); } });
-async function filterDirectory() { await loadProfessors(document.getElementById('directorySearch').value.trim(), Number(document.getElementById('ratingFilter').value)); }
-document.getElementById('directorySearch').addEventListener('input', filterDirectory);
-document.getElementById('ratingFilter').addEventListener('change', filterDirectory);
-document.getElementById('heroSearch').addEventListener('submit', async e => { e.preventDefault(); const q = document.getElementById('heroQuery').value.trim(); document.getElementById('directorySearch').value = q; document.getElementById('directory').scrollIntoView({ behavior:'smooth' }); await filterDirectory(); });
-document.querySelectorAll('.trending button,.course-card').forEach(b => b.addEventListener('click', () => { document.getElementById('heroQuery').value = b.dataset.course || b.textContent; document.getElementById('heroSearch').dispatchEvent(new Event('submit')); }));
-document.getElementById('reviewForm').addEventListener('submit', async e => { e.preventDefault(); if (!getToken()) { closeReviewModal(); openAuth('login'); return; } try { await api('/reviews', { method:'POST', body:JSON.stringify({ professorId:currentReviewProfessor._id, rating:Number(document.getElementById('reviewRating').value), teachingQuality:Number(document.getElementById('teachingQuality').value), difficulty:Number(document.getElementById('difficulty').value), comment:document.getElementById('reviewComment').value.trim() }) }); alert('Review published successfully.'); document.getElementById('reviewForm').reset(); closeReviewModal(); await filterDirectory(); } catch (error) { alert(error.message); } });
-document.getElementById('year').textContent = new Date().getFullYear();
+// Sidd AI UI
+const siddStyle=document.createElement('style');siddStyle.textContent=`.sidd-fab{position:fixed;right:22px;bottom:22px;z-index:90;border:0;border-radius:50px;padding:13px 18px;background:linear-gradient(135deg,#092b52,#1469d8);color:#fff;font-weight:800;box-shadow:0 15px 35px rgba(9,43,82,.25);cursor:pointer}.sidd-panel{position:fixed;right:22px;bottom:82px;width:min(390px,calc(100vw - 28px));height:min(620px,75vh);z-index:90;background:#fff;border:1px solid #dfe8f3;border-radius:22px;box-shadow:0 25px 70px rgba(16,43,76,.22);display:none;overflow:hidden}.sidd-panel.open{display:flex;flex-direction:column}.sidd-head{padding:17px;background:linear-gradient(135deg,#092b52,#1469d8);color:#fff;display:flex;align-items:center;gap:10px}.sidd-head strong{font-size:15px}.sidd-head small{display:block;opacity:.8;font-size:10px}.sidd-close{margin-left:auto;border:0;background:rgba(255,255,255,.15);color:#fff;border-radius:50%;width:30px;height:30px}.sidd-body{padding:15px;overflow:auto;flex:1}.sidd-msg{padding:10px 12px;border-radius:14px;background:#f3f7fb;margin-bottom:10px;font-size:12px}.sidd-user{background:#eaf3ff;margin-left:28px}.sidd-form{display:flex;gap:7px;padding:10px;border-top:1px solid #dfe8f3}.sidd-form input{flex:1;border:1px solid #d1deec;border-radius:10px;padding:10px;outline:0}.sidd-form button{border:0;border-radius:10px;background:#1469d8;color:#fff;padding:0 14px;font-weight:800}.sidd-insight-btn{margin-top:8px;width:100%;border:1px solid #cfe0f5;background:#f4f9ff;color:#1469d8;border-radius:9px;padding:8px;font-size:11px;font-weight:800}.sidd-insights{padding:20px}.sidd-insights h3{margin-bottom:8px}.sidd-insights .chips{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}.sidd-insights .chip{background:#edf5ff;color:#1469d8;padding:5px 8px;border-radius:50px;font-size:10px}`;document.head.appendChild(siddStyle);
+const siddPanel=document.createElement('div');siddPanel.className='sidd-panel';siddPanel.id='siddPanel';siddPanel.innerHTML=`<div class="sidd-head"><div>✨</div><div><strong>Sidd AI</strong><small>Professor Review Hub Assistant</small></div><button class="sidd-close" id="siddClose">×</button></div><div class="sidd-body" id="siddBody"><div class="sidd-msg">Hi! I'm <b>Sidd AI</b>. Ask me about professors, courses, ratings, reviews, or who might fit your learning style.</div></div><form class="sidd-form" id="siddForm"><input id="siddInput" placeholder="Ask Sidd AI..." autocomplete="off"><button>Ask</button></form>`;document.body.appendChild(siddPanel);const fab=document.createElement('button');fab.className='sidd-fab';fab.textContent='✨ Sidd AI';document.body.appendChild(fab);fab.onclick=()=>siddPanel.classList.toggle('open');document.getElementById('siddClose').onclick=()=>siddPanel.classList.remove('open');
+document.getElementById('siddForm').addEventListener('submit',async e=>{e.preventDefault();const input=document.getElementById('siddInput'),msg=input.value.trim();if(!msg)return;const body=document.getElementById('siddBody');body.insertAdjacentHTML('beforeend',`<div class="sidd-msg sidd-user">${escapeHtml(msg)}</div>`);input.value='';body.scrollTop=body.scrollHeight;try{const data=await api('/ai/chat',{method:'POST',body:JSON.stringify({message:msg})});body.insertAdjacentHTML('beforeend',`<div class="sidd-msg"><b>Sidd AI:</b> ${escapeHtml(data.answer||'I could not answer that right now.')}</div>`);}catch(err){body.insertAdjacentHTML('beforeend',`<div class="sidd-msg"><b>Sidd AI:</b> ${escapeHtml(err.message)}</div>`);}body.scrollTop=body.scrollHeight;});
+async function openInsights(id){const p=professors.find(x=>String(x._id)===String(id));if(String(id).startsWith('demo-')){siddPanel.classList.add('open');document.getElementById('siddBody').insertAdjacentHTML('beforeend','<div class="sidd-msg">AI Insights become available after the backend is connected and real student reviews are loaded.</div>');return;}try{const data=await api(`/ai/professor/${encodeURIComponent(id)}/insights`);const box=document.createElement('div');box.className='modal open';box.innerHTML=`<div class="modal-backdrop"></div><div class="auth-card sidd-insights"><button class="close">×</button><p class="eyebrow">SIDD AI INSIGHTS</p><h2>${escapeHtml(p?.name||'Professor')}</h2><h3>Summary</h3><p class="auth-sub">${escapeHtml(data.summary||'No summary available.')}</p><h3>Strengths</h3><div class="chips">${(data.strengths||[]).map(x=>`<span class="chip">${escapeHtml(x)}</span>`).join('')}</div><h3>Improvement areas</h3><div class="chips">${(data.weaknesses||[]).map(x=>`<span class="chip">${escapeHtml(x)}</span>`).join('')}</div><p class="auth-sub"><b>Sentiment:</b> ${escapeHtml(data.sentiment||'unknown')}</p></div>`;document.body.appendChild(box);box.querySelector('.close').onclick=()=>box.remove();box.querySelector('.modal-backdrop').onclick=()=>box.remove();}catch(err){alert(err.message);}}
