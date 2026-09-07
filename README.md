@@ -1,20 +1,26 @@
 # Professor Review Hub
 
-Professor Review Hub is a student-first web application for discovering professors, reading student feedback, comparing ratings, and submitting reviews.
+Professor Review Hub is a student-first professor discovery and review platform with **Sidd AI**, an AI assistant that turns student feedback into useful academic insights.
 
-## Features
+## AI features
 
-- Professor search by name, course, department, or university
-- Rating and review directory
-- Student registration and login
-- JWT-based authentication
-- One-review-per-student-per-professor protection
-- Create, update, and delete your own reviews
-- Professor rating/statistics refresh after reviews
-- MongoDB database integration
-- Express REST API with Helmet, CORS, and rate limiting
-- Responsive frontend for desktop and mobile
-- Demo professor data keeps the public frontend usable before API deployment
+- **Sidd AI Assistant** — conversational assistant for professor, course and review questions
+- **AI Review Summaries** — concise professor strengths, weaknesses and themes
+- **Sentiment Analysis** — positive/neutral/negative review sentiment with confidence
+- **AI Review Moderation** — checks submitted reviews before publication
+- **AI Tags** — automatically identifies useful review themes
+- **Natural-language / semantic professor search** — search by learning preferences and meaning
+- **AI Professor Recommendations** — recommendations based on student preferences
+- **AI Professor Insights** — summarizes real student feedback on a professor
+
+## Stack
+
+- Frontend: HTML, CSS, JavaScript, GitHub Pages
+- Backend: Node.js + Express
+- Database: MongoDB + Mongoose
+- Authentication: JWT + bcrypt
+- AI: OpenAI Responses API through the server-side SDK
+- Deployment: GitHub Pages + Node hosting (Render/Vercel compatible)
 
 ## Project structure
 
@@ -27,43 +33,35 @@ professor-review-/
 ├── render.yaml
 ├── backend/
 │   ├── server.js
+│   ├── server-v2.js
+│   ├── ai.js
 │   ├── models.js
 │   ├── seed.js
 │   ├── package.json
-│   ├── .env.example
-│   └── .gitignore
-└── .github/
-    └── workflows/
-        └── deploy-pages.yml
+│   └── .env.example
+└── .github/workflows/
 ```
 
-## Frontend deployment
+## AI environment variables
 
-The repository is configured for GitHub Pages. Enable **GitHub Pages → Build and deployment → GitHub Actions** in the repository settings. The workflow deploys the `main` branch automatically.
+Keep the OpenAI key on the backend only. Never put it in `script.js`, `index.html`, GitHub Pages, or any public client-side file.
 
-Expected project-site URL:
-
-`https://sahsiddh989-wq.github.io/professor-review-/`
-
-## Backend deployment
-
-`render.yaml` contains the Render web-service configuration. The backend requires these environment variables:
-
-- `MONGODB_URI`
-- `JWT_SECRET`
-- `CLIENT_URL`
-
-After deploying the backend, put its API URL in `api-config.js`, for example:
-
-```js
-window.PROFESSOR_REVIEW_API = 'https://your-api-domain.onrender.com/api';
+```env
+OPENAI_API_KEY=your_server_side_key
+OPENAI_MODEL=gpt-5.6-luna
 ```
 
-Do not commit real secrets or `.env` files.
+The deployment configuration also supports `MONGODB_URI`, `JWT_SECRET`, `CLIENT_URL`, `ADMIN_EMAIL`, and `ADMIN_PASSWORD`.
+
+## AI API endpoints
+
+- `GET /api/ai/professor/:id/insights`
+- `POST /api/ai/chat`
+- `POST /api/ai/search`
+- `POST /api/ai/recommend`
+- `POST /api/ai/moderate`
 
 ## Local development
-
-### Backend
 
 ```bash
 cd backend
@@ -72,32 +70,8 @@ cp .env.example .env
 npm start
 ```
 
-### Frontend
-
-Serve the repository root with any static HTTP server. Opening `index.html` directly is fine for the demo UI, but API features require the deployed/configured backend.
-
-## API overview
-
-- `GET /api/health`
-- `POST /api/auth/register`
-- `POST /api/auth/login`
-- `GET /api/auth/me`
-- `PATCH /api/auth/me`
-- `GET /api/professors`
-- `GET /api/professors/:id`
-- `POST /api/professors`
-- `GET /api/reviews/professor/:id`
-- `GET /api/reviews/mine`
-- `POST /api/reviews`
-- `PATCH /api/reviews/:id`
-- `DELETE /api/reviews/:id`
+Set the backend URL in `api-config.js` for the frontend.
 
 ## Security
 
-Passwords are hashed with bcrypt. Authentication uses signed JWTs. The API uses Helmet security headers, CORS restrictions, request-size limits, and rate limiting. Keep `JWT_SECRET` and database credentials private.
-
-## Status
-
-Frontend: ready for GitHub Pages deployment.
-
-Backend: ready for Render deployment once MongoDB and environment variables are supplied.
+AI requests are performed server-side. The client never receives the OpenAI API key. Existing authentication, CORS, Helmet and rate limiting remain enabled.
