@@ -13,3 +13,11 @@ services:
         sync: false
       - key: CLIENT_URL
         value: https://sahsiddh989-wq.github.io/professor-review-/
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-5.6-luna
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
